@@ -1,0 +1,8 @@
+Website = "https://www.caisin.tech"
+
+[Details]
+  Icon = "theme/caisin.png"
+  Name = "视频压缩"
+  ID = "com.caisin.video"
+  Version = "1.0.0"
+  Build = 3
