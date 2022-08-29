@@ -12,6 +12,7 @@ import (
 	"gitee.com/Caisin/caisin-go/utils/strutil"
 	"github.com/panjf2000/ants/v2"
 	"go.uber.org/atomic"
+	"golang.design/x/clipboard"
 	"os"
 	"path"
 	"strings"
@@ -41,6 +42,9 @@ var (
 
 }
 */
+func init() {
+	clipboard.Init()
+}
 func main() {
 
 	a := app.New()
@@ -70,7 +74,14 @@ func main() {
 	})
 	srcBox := container.NewHBox(widget.NewLabel("视频目录:"), srcPathLabel, selBtn)
 
-	info := widget.NewLabel("使用前请先安装ffmpeg\n下载地址:https://ffmpeg.org/download.html")
+	url := "https://ffmpeg.org/download.html"
+	info := widget.NewLabel(fmt.Sprintf("使用前请先安装ffmpeg\n下载地址:%s", url))
+	infoBox := container.NewHBox(info, widget.NewButton("去下载", func() {
+		util.Open(url)
+	}), widget.NewButton("复制", func() {
+		clipboard.Write(clipboard.FmtText, []byte(url))
+		dialog.ShowInformation("成功", "复制成功", w)
+	}))
 	outPath := ""
 	outPathLabel := widget.NewLabel(outPath)
 	selOutBtn := widget.NewButton("选择", func() {
@@ -106,7 +117,7 @@ func main() {
 		}
 	}(transBtn)
 	w.SetContent(container.NewVBox(
-		info,
+		infoBox,
 		hello,
 		transBtn,
 	))
