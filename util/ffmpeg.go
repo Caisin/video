@@ -3,6 +3,7 @@ package util
 import (
 	"os"
 	"os/exec"
+	"viedo2m3u8/model"
 )
 
 func RunCommand(dir, name string, args ...string) string {
@@ -25,6 +26,6 @@ func RunCommandWithConsole(dir string, name string, args ...string) error {
 	return cmd.Run()
 }
 
-func CompressVideo(src, desc string) string {
-	return RunCommand(".", "ffmpeg", "-i", src, "-r", "25", "-c:v", "libx264", "-y", desc)
+func CompressVideo(set *model.Setting, src, desc string) string {
+	return RunCommand(set.FfmpegPath, "ffmpeg", "-i", src, "-r", "25", "-c:v", "libx264", "-y", desc)
 }

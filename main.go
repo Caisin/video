@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"fyne.io/fyne/v2"
@@ -18,6 +19,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"viedo2m3u8/model"
 	"viedo2m3u8/theme"
 	"viedo2m3u8/util"
 )
@@ -27,6 +29,7 @@ var (
 		".mp4": true,
 		".avi": true,
 	}
+	settingFile = ".caisin.setting"
 )
 
 /*
@@ -45,10 +48,17 @@ var (
 func init() {
 	clipboard.Init()
 }
+
 func main() {
 
 	a := app.New()
 
+	setting := &model.Setting{Rate: "60"}
+
+	str, err := files.ReadStr(settingFile)
+	if err == nil {
+		json.Unmarshal([]byte(str), setting)
+	}
 	caisinTheme := &theme.CaisinTheme{}
 	a.Settings().SetTheme(caisinTheme)
 	icon := caisinTheme.Icon("logo")
@@ -56,8 +66,16 @@ func main() {
 	w := a.NewWindow("视频压缩")
 	w.SetIcon(icon)
 
-	srcPath := ""
-	srcPathLabel := widget.NewLabel(srcPath)
+	rateEntry := widget.NewEntry()
+	rateEntry.SetText(setting.Rate)
+	rateEntry.PlaceHolder = "帧率"
+
+	rateEntry.OnChanged = func(s string) {
+		setting.Rate = s
+	}
+	rateBox := container.NewHBox(widget.NewLabel("帧率:"), rateEntry)
+
+	srcPathLabel := widget.NewLabel(setting.InPath)
 	selBtn := widget.NewButton("选择", func() {
 		dialog.ShowFolderOpen(func(dir fyne.ListableURI, err error) {
 			if err != nil {
@@ -67,8 +85,8 @@ func main() {
 			if dir == nil {
 				dialog.ShowInformation("目录", "取消选择", w)
 			} else {
-				srcPath = dir.Path()
-				srcPathLabel.SetText(srcPath)
+				setting.InPath = dir.Path()
+				srcPathLabel.SetText(setting.InPath)
 			}
 		}, w)
 	})
@@ -82,8 +100,24 @@ func main() {
 		clipboard.Write(clipboard.FmtText, []byte(url))
 		dialog.ShowInformation("成功", "复制成功", w)
 	}))
-	outPath := ""
-	outPathLabel := widget.NewLabel(outPath)
+
+	ffmPathLabel := widget.NewLabel(setting.FfmpegPath)
+	ffmpegBtn := widget.NewButton("选择", func() {
+		dialog.ShowFolderOpen(func(dir fyne.ListableURI, err error) {
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+			if dir == nil {
+				dialog.ShowInformation("目录", "取消选择", w)
+			}
+			setting.FfmpegPath = dir.Path()
+			ffmPathLabel.SetText(setting.FfmpegPath)
+		}, w)
+	})
+	ffmBox := container.NewHBox(widget.NewLabel("ffmpeg目录:"), ffmPathLabel, ffmpegBtn)
+
+	outPathLabel := widget.NewLabel(setting.OutPath)
 	selOutBtn := widget.NewButton("选择", func() {
 		dialog.ShowFolderOpen(func(dir fyne.ListableURI, err error) {
 			if err != nil {
@@ -93,12 +127,12 @@ func main() {
 			if dir == nil {
 				dialog.ShowInformation("目录", "取消选择", w)
 			} else {
-				outPath = dir.Path()
-				if outPath == srcPath {
-					outPath = ""
+				setting.OutPath = dir.Path()
+				if setting.OutPath == setting.InPath {
+					setting.OutPath = ""
 					dialog.ShowError(errors.New("输入目录和输出目录不能相同"), w)
 				}
-				outPathLabel.SetText(outPath)
+				outPathLabel.SetText(setting.OutPath)
 
 			}
 		}, w)
@@ -107,13 +141,25 @@ func main() {
 
 	pro := widget.NewLabel(fmt.Sprintf("转化进度:%d/%d", 0, 0))
 
-	hello := widget.NewCard("压缩设置", "视频目录和输出地址设置", container.NewVBox(srcBox, outBox, pro))
+	saveSetBtn := widget.NewButton("保存配置", func() {
+		setting.Rate = rateEntry.Text
+		saveSetting(setting)
+	},
+	)
+	hello := widget.NewCard("压缩设置", "视频目录和输出地址设置",
+		container.NewVBox(ffmBox,
+			rateBox,
+			srcBox,
+			outBox,
+			pro,
+			saveSetBtn),
+	)
 
 	hello.Resize(fyne.NewSize(750, 400))
 	transBtn := widget.NewButton("转换", func() {})
 	transBtn.OnTapped = func(transBtn *widget.Button) func() {
 		return func() {
-			trans(pro, transBtn, w, srcPath, outPath)
+			trans(pro, transBtn, w, setting)
 		}
 	}(transBtn)
 	w.SetContent(container.NewVBox(
@@ -124,18 +170,18 @@ func main() {
 	w.Resize(fyne.NewSize(750, 500))
 	w.ShowAndRun()
 }
-func trans(label *widget.Label, btn *widget.Button, w fyne.Window, src, out string) {
-	if strutil.IsBlank(out) {
+func trans(label *widget.Label, btn *widget.Button, w fyne.Window, setting *model.Setting) {
+	if strutil.IsBlank(setting.OutPath) {
 		dialog.ShowError(errors.New("输出目录不能为空"), w)
 		return
 	}
 	btn.Disable()
 	defer btn.Enable()
-	if !files.PathExist(src) {
+	if !files.PathExist(setting.InPath) {
 		dialog.ShowError(errors.New("输入目录不存在"), w)
 		return
 	}
-	entries, err := os.ReadDir(src)
+	entries, err := os.ReadDir(setting.InPath)
 	if err != nil {
 		dialog.ShowError(err, w)
 		return
@@ -154,7 +200,7 @@ func trans(label *widget.Label, btn *widget.Button, w fyne.Window, src, out stri
 		return
 	}
 
-	err = files.IsNotExistMkDir(out)
+	err = files.IsNotExistMkDir(setting.OutPath)
 	if err != nil {
 		dialog.ShowError(err, w)
 		return
@@ -177,7 +223,7 @@ func trans(label *widget.Label, btn *widget.Button, w fyne.Window, src, out stri
 		p.Submit(func() {
 			defer wg.Done()
 			defer done.Add(1)
-			ret := util.CompressVideo(path.Join(src, mp4), path.Join(out, mp4))
+			ret := util.CompressVideo(setting, path.Join(setting.InPath, mp4), path.Join(setting.OutPath, mp4))
 			succ.Add(1)
 			fmt.Println(ret)
 		})
@@ -186,4 +232,15 @@ func trans(label *widget.Label, btn *widget.Button, w fyne.Window, src, out stri
 	wg.Wait()
 
 	dialog.ShowInformation("成功", fmt.Sprintf("转化成功:%s,失败:%s", succ, fail), w)
+}
+
+func saveSetting(set *model.Setting) {
+	marshal, err := json.Marshal(set)
+	if err == nil {
+		file, err := files.OpenOrCreateFile(settingFile)
+		if err == nil {
+			defer file.Close()
+			file.Write(marshal)
+		}
+	}
 }
